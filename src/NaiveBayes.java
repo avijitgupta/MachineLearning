@@ -1,7 +1,8 @@
+import java.io.BufferedWriter;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.FileWriter;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 
@@ -57,7 +58,6 @@ public class NaiveBayes {
   
   static Pair pairMapper[][];
   static double P[];
-  static int NOISE_THRESH = 6;
   
   public static void testRead(){
     for(int i = 0 ; i < 10 ; i ++){
@@ -137,9 +137,7 @@ public class NaiveBayes {
 
     }
   }
-  
-  
-  
+
   /**
    * @param args
    * @throws Exception 
@@ -148,14 +146,20 @@ public class NaiveBayes {
   public static void main(String[] args) throws Exception {
     condProbBackground = new HashMap<Integer, HashMap<Pair, Double>>();
     imageDatabase = new HashMap<Integer, ArrayList<HashMap<Pair, Character>>> ();
-    String trainingDataPath = "/home/avijit/workspace/MachineLearning/src/Data/trainingimages";
-    String trainingLabelsPath = "/home/avijit/workspace/MachineLearning/src/Data/traininglabels";
+    
+    if(args.length < 5){
+      System.out.println("Usage: java NaiveBayes <path/to/trainingimages> <path/to/traininglabels>" +
+      		"<path/to/testimages> <path/to/testlabels> <path/to/classifiedOutput>");
+      return;
+    }
+    
+    String trainingDataPath = args[0];
+    String trainingLabelsPath = args[1];
     String line;
     int i = 0 ;
     int j = 0;
     int label = 0;
     int numRecords = 0;
-    double epsilon = 0.00000000001d;
     P = new double[10];
     
     //keeps count from 0-9
@@ -192,7 +196,6 @@ public class NaiveBayes {
       label = Integer.parseInt(labelIn.readLine());
       count[label]++;
       numRecords++;
-      //System.out.println(numRecords);
       //pick up existing arraylist
       if(imageDatabase.containsKey(label)){
         tempArrayList = imageDatabase.get(label);
@@ -217,13 +220,11 @@ public class NaiveBayes {
     } 
     //Trains the dataset
     calculateConditionalProbabilities();
-  
-    classify("/home/avijit/workspace/MachineLearning/src/Data/testimages", 
-             "/home/avijit/workspace/MachineLearning/src/Data/testlabels",
-             "/home/avijit/workspace/MachineLearning/src/Data/testout");
+    classify(args[2], args[3], args[4]);
     
   }
   
+  @SuppressWarnings("deprecation")
   public static void classify(String inputPath, String actualOutput, String outputPath) throws Exception{
     int correctLabels = 0;
     int totalData = 0;
@@ -232,9 +233,16 @@ public class NaiveBayes {
     int i,j;
     String line = in.readLine();
     HashMap<Pair, Character> currentHashMap = new HashMap<Pair, Character>();
-
+    //true positive
+    int tp[] = new int[10];
+    //false positive
+    int fp[] = new int[10];
+    //false negative
+    int fn[] = new int[10];
+    
     FileInputStream labelStream = new FileInputStream(actualOutput);
     DataInputStream labelIn = new DataInputStream(labelStream);
+    PrintWriter out  = new PrintWriter(new BufferedWriter(new FileWriter(outputPath)));
     
     while(line!=null) {
       //A test image copied into currentHashMap
@@ -249,25 +257,39 @@ public class NaiveBayes {
       //CurrentHashMap contains current image
       int label = getClassifiedLabel(currentHashMap);
       int actualLabel = Integer.parseInt(labelIn.readLine());
+      
       if(label == actualLabel){
         correctLabels ++;
+        tp[label] ++;
       }
-      
-      System.out.println(label);
+      else{
+        fp[label] ++;
+        fn[actualLabel] ++;
+      }
+      out.write(label+"\n");
+      out.flush();
       currentHashMap.clear();
     }
+    out.close();
     double accuracy  = correctLabels*100.0 / totalData;
     System.out.println("Accuracy = " + accuracy + "%");
+    for(i = 0 ; i < 10; i ++){
+      double prec = tp[i]*1.0/(tp[i] + fp[i]);
+      System.out.print("Precision of "+ i +" = " + prec );
+      double recall = tp[i]*1.0 / (tp[i] + fn[i]);
+      System.out.println(" Recall of "+ i +" = " + recall );
+      
+    }
   }
   
   public static int getClassifiedLabel(HashMap<Pair, Character> currentHashMap){
     
-    double maxProb = Integer.MIN_VALUE;
+    double maxProb = 0;
     int maxDigit = -1;
     
     for(int digit = 0 ; digit < 10 ; digit ++){
       
-      double LogProbDigit = 0;
+      double LogProbDigit = Math.log(P[digit]);
       
       for(int i = 0 ; i < numRows; i ++){
         for(int j = 0 ; j < numCols; j ++){
@@ -283,8 +305,13 @@ public class NaiveBayes {
           }
         }
       }
-     
-      if(LogProbDigit > maxProb){
+      
+      if(digit ==0){
+        maxProb = LogProbDigit;
+        maxDigit = 0;
+      }
+      
+      else if(LogProbDigit > maxProb){
         maxProb = LogProbDigit;
         maxDigit = digit;
       }
